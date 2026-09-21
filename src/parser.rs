@@ -7,7 +7,7 @@ use crate::subtokenize::subtokenize;
 use crate::tokenizer::Tokenizer;
 use crate::util::location::Location;
 use crate::ParseOptions;
-use alloc::{string::String, vec, vec::Vec};
+use alloc::{string::String, vec::Vec};
 
 /// Info needed, in all content types, when parsing markdown.
 ///
@@ -22,9 +22,9 @@ pub struct ParseState<'a> {
     /// List of chars.
     pub bytes: &'a [u8],
     /// Set of defined definition identifiers.
-    pub definitions: Vec<String>,
+    pub definitions: alloc::collections::BTreeSet<String>,
     /// Set of defined GFM footnote definition identifiers.
-    pub gfm_footnote_definitions: Vec<String>,
+    pub gfm_footnote_definitions: alloc::collections::BTreeSet<String>,
 }
 
 /// Turn a string of markdown into events.
@@ -44,8 +44,8 @@ pub fn parse<'a>(
         } else {
             None
         },
-        definitions: vec![],
-        gfm_footnote_definitions: vec![],
+        definitions: alloc::collections::BTreeSet::new(),
+        gfm_footnote_definitions: alloc::collections::BTreeSet::new(),
     };
 
     let start = Point {
@@ -67,8 +67,8 @@ pub fn parse<'a>(
     loop {
         let fn_defs = &mut parse_state.gfm_footnote_definitions;
         let defs = &mut parse_state.definitions;
-        fn_defs.append(&mut result.gfm_footnote_definitions);
-        defs.append(&mut result.definitions);
+        fn_defs.extend(result.gfm_footnote_definitions.drain(..));
+        defs.extend(result.definitions.drain(..));
 
         if result.done {
             return Ok((events, parse_state));
