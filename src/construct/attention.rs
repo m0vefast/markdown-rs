@@ -85,7 +85,7 @@ use crate::util::char::{
     after_index as char_after_index, before_index as char_before_index, classify_opt,
     Kind as CharacterKind,
 };
-use alloc::{vec, vec::Vec};
+use alloc::{collections::BTreeMap, vec, vec::Vec};
 
 /// Attentention sequence that we can take markers from.
 #[derive(Debug)]
@@ -149,10 +149,134 @@ pub fn inside(tokenizer: &mut Tokenizer) -> State {
     }
 }
 
+/// The sequences that may still open, and where the backward walk for a closer
+/// looks among them.
+///
+/// Each set is a disjoint-set forest over positions shifted by one (node `0` is
+/// “none”): a sequence that can no longer open — spent, or closed off by a match
+/// around it — never can again, so its node points down and a walk jumps every
+/// such run in amortized constant time. A spent sequence stays in place instead
+/// of being removed from the list: each removal shifted everything after it.
+///
+/// A closer only matches an opener with its marker and its stack, so it walks its
+/// own group alone. And once a closer of some kind finds no opener, nothing below
+/// it in its group opens for that kind until one of those sequences changes size,
+/// which only a match does (`bottom`, lowered in `resized`) — the bound
+/// CommonMark’s reference parser keeps as `openers_bottom`. Without these, every
+/// closer rescanned every opener that could never match it.
+struct Openers {
+    all: Vec<usize>,
+    group: Vec<usize>,
+    place: Vec<usize>,
+    members: Vec<Vec<usize>>,
+    forests: Vec<Vec<usize>>,
+    bottom: Vec<[usize; 6]>,
+}
+
+/// The root of `node` in `forest`, halving the path to it.
+fn root(forest: &mut [usize], mut node: usize) -> usize {
+    while forest[node] != node {
+        let grand = forest[forest[node]];
+        forest[node] = grand;
+        node = grand;
+    }
+    node
+}
+
+/// The kind of closer a sequence is, as far as which openers it matches: whether
+/// it can open, and its size — modulo three for the rule of three, or exactly for
+/// strikethrough.
+fn closer_kind(sequence: &Sequence) -> usize {
+    let size = if sequence.marker == b'~' {
+        sequence.size.min(3) - 1
+    } else {
+        sequence.size % 3
+    };
+    usize::from(sequence.open) * 3 + size
+}
+
+impl Openers {
+    fn new(sequences: &[Sequence]) -> Self {
+        let mut groups: BTreeMap<(u8, Option<usize>), usize> = BTreeMap::new();
+        let mut all = Vec::with_capacity(sequences.len() + 1);
+        let mut group = Vec::with_capacity(sequences.len());
+        let mut place = Vec::with_capacity(sequences.len());
+        let mut members: Vec<Vec<usize>> = vec![];
+        all.push(0);
+        for (index, sequence) in sequences.iter().enumerate() {
+            all.push(if sequence.open { index + 1 } else { index });
+            let fresh = members.len();
+            let id = *groups
+                .entry((sequence.marker, sequence.stack.last().copied()))
+                .or_insert(fresh);
+            if id == fresh {
+                members.push(vec![]);
+            }
+            group.push(id);
+            place.push(members[id].len());
+            members[id].push(index);
+        }
+        let forests = members
+            .iter()
+            .map(|member| {
+                let mut forest = Vec::with_capacity(member.len() + 1);
+                forest.push(0);
+                for (at, index) in member.iter().enumerate() {
+                    forest.push(if sequences[*index].open { at + 1 } else { at });
+                }
+                forest
+            })
+            .collect();
+        let bottom = vec![[0; 6]; members.len()];
+        Openers {
+            all,
+            group,
+            place,
+            members,
+            forests,
+            bottom,
+        }
+    }
+
+    /// The nearest sequence before `index` that may still open.
+    fn before(&mut self, index: usize) -> Option<usize> {
+        root(&mut self.all, index).checked_sub(1)
+    }
+
+    /// The nearest sequence of `close`’s group before `index` that may still open
+    /// for a closer of `kind`.
+    fn opener_before(&mut self, close: usize, index: usize, kind: usize) -> Option<usize> {
+        let id = self.group[close];
+        let at = root(&mut self.forests[id], self.place[index]).checked_sub(1)?;
+        (at >= self.bottom[id][kind]).then(|| self.members[id][at])
+    }
+
+    /// Nothing before `close` in its group opens for a closer of `kind`.
+    fn exhausted(&mut self, close: usize, kind: usize) {
+        self.bottom[self.group[close]][kind] = self.place[close];
+    }
+
+    /// The sequence at `index` changed size: it may open for closers it could not.
+    fn resized(&mut self, index: usize) {
+        let at = self.place[index];
+        for bottom in &mut self.bottom[self.group[index]] {
+            *bottom = (*bottom).min(at);
+        }
+    }
+
+    /// The sequence at `index` can no longer open.
+    fn close(&mut self, index: usize) {
+        self.all[index + 1] = index;
+        let at = self.place[index];
+        self.forests[self.group[index]][at + 1] = at;
+    }
+}
+
 /// Resolve sequences.
 pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
     // Find all sequences, gather info about them.
     let mut sequences = get_sequences(tokenizer);
+    let mut openers = Openers::new(&sequences);
 
     // Now walk through them and match them.
     let mut close = 0;
@@ -163,11 +287,13 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
 
         // Find a sequence that can close.
         if sequence_close.close {
-            let mut open = close;
+            let kind = closer_kind(sequence_close);
+            let mut candidate = openers.opener_before(close, close, kind);
+            let mut matched = false;
 
             // Now walk back to find an opener.
-            while open > 0 {
-                open -= 1;
+            while let Some(open) = candidate {
+                candidate = openers.opener_before(close, open, kind);
 
                 let sequence_open = &sequences[open];
 
@@ -201,10 +327,15 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
                     }
 
                     // We found a match!
-                    next_index = match_sequences(tokenizer, &mut sequences, open, close);
+                    next_index = match_sequences(tokenizer, &mut sequences, &mut openers, open, close);
+                    matched = true;
 
                     break;
                 }
+            }
+
+            if !matched {
+                openers.exhausted(close, kind);
             }
         }
 
@@ -215,8 +346,10 @@ pub fn resolve(tokenizer: &mut Tokenizer) -> Option<Subresult> {
     let mut index = 0;
     while index < sequences.len() {
         let sequence = &sequences[index];
-        tokenizer.events[sequence.index].name = Name::Data;
-        tokenizer.events[sequence.index + 1].name = Name::Data;
+        if sequence.size > 0 {
+            tokenizer.events[sequence.index].name = Name::Data;
+            tokenizer.events[sequence.index + 1].name = Name::Data;
+        }
         index += 1;
     }
 
@@ -291,14 +424,15 @@ fn get_sequences(tokenizer: &mut Tokenizer) -> Vec<Sequence> {
 #[allow(clippy::too_many_lines)]
 fn match_sequences(
     tokenizer: &mut Tokenizer,
-    sequences: &mut Vec<Sequence>,
+    sequences: &mut [Sequence],
+    openers: &mut Openers,
     open: usize,
     close: usize,
 ) -> usize {
     // Where to move to next.
     // Stay on this closing sequence for the next iteration: it
     // might close more things.
-    // It’s changed if sequences are removed.
+    // It’s changed if the closing sequence is spent.
     let mut next = close;
 
     // Number of markers to use from the sequence.
@@ -320,11 +454,13 @@ fn match_sequences(
     // possible to open anything.
     // Theoretically we should mark as `close: false` too, but
     // we don’t look for closers backwards, so it’s not needed.
-    let mut between = open + 1;
+    // Only sequences that may still open have anything to lose.
+    let mut between = openers.before(close);
 
-    while between < close {
-        sequences[between].open = false;
-        between += 1;
+    while let Some(index) = between.filter(|&index| index > open) {
+        sequences[index].open = false;
+        openers.close(index);
+        between = openers.before(index);
     }
 
     let (group_name, seq_name, text_name) = if sequences[open].marker == b'~' {
@@ -415,11 +551,15 @@ fn match_sequences(
         ],
     );
 
-    // Remove closing sequence if fully used.
+    // Spend closing sequence if fully used.
     if sequences[close].size == 0 {
-        sequences.remove(close);
+        sequences[close].open = false;
+        sequences[close].close = false;
+        openers.close(close);
         tokenizer.map.add(close_index, 2, vec![]);
+        next += 1;
     } else {
+        openers.resized(close);
         // Shift remaining closing sequence forward.
         // Do it here because a sequence can open and close different
         // other sequences, and the remainder can be on any side or
@@ -428,11 +568,12 @@ fn match_sequences(
     }
 
     if sequences[open].size == 0 {
-        sequences.remove(open);
+        sequences[open].open = false;
+        sequences[open].close = false;
+        openers.close(open);
         tokenizer.map.add(open_index, 2, vec![]);
-        // Everything shifts one to the left, account for it in next iteration.
-        next -= 1;
     } else {
+        openers.resized(open);
         tokenizer.events[open_index + 1].point = sequences[open].end_point.clone();
     }
 
