@@ -59,12 +59,13 @@ fn shift_links(events: &mut [Event], jumps: &[(usize, usize, usize)]) {
 pub struct EditMap {
     /// Record of changes.
     map: Vec<(usize, usize, Vec<Event>)>,
+    slot: alloc::collections::BTreeMap<usize, usize>,
 }
 
 impl EditMap {
     /// Create a new edit map.
     pub fn new() -> EditMap {
-        EditMap { map: vec![] }
+        EditMap { map: vec![], slot: alloc::collections::BTreeMap::new() }
     }
     /// Create an edit: a remove and/or add at a certain place.
     pub fn add(&mut self, index: usize, remove: usize, add: Vec<Event>) {
@@ -116,33 +117,29 @@ impl EditMap {
         }
 
         self.map.truncate(0);
+        self.slot.clear();
     }
 }
 
 /// Create an edit.
 fn add_impl(edit_map: &mut EditMap, at: usize, remove: usize, mut add: Vec<Event>, before: bool) {
-    let mut index = 0;
-
     if remove == 0 && add.is_empty() {
         return;
     }
 
-    while index < edit_map.map.len() {
-        if edit_map.map[index].0 == at {
-            edit_map.map[index].1 += remove;
+    if let Some(&index) = edit_map.slot.get(&at) {
+        edit_map.map[index].1 += remove;
 
-            if before {
-                add.append(&mut edit_map.map[index].2);
-                edit_map.map[index].2 = add;
-            } else {
-                edit_map.map[index].2.append(&mut add);
-            }
-
-            return;
+        if before {
+            add.append(&mut edit_map.map[index].2);
+            edit_map.map[index].2 = add;
+        } else {
+            edit_map.map[index].2.append(&mut add);
         }
 
-        index += 1;
+        return;
     }
 
+    edit_map.slot.insert(at, edit_map.map.len());
     edit_map.map.push((at, remove, add));
 }
