@@ -191,6 +191,7 @@ pub mod partial_space_or_tab;
 pub mod partial_space_or_tab_eol;
 pub mod partial_title;
 pub mod partial_whitespace;
+pub mod math_text;
 pub mod raw_flow;
 pub mod raw_text;
 pub mod string;

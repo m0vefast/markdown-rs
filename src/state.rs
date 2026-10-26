@@ -432,6 +432,14 @@ pub enum Name {
     RawTextData,
     RawTextSequenceClose,
 
+    MathTextStart,
+    MathTextOpened,
+    MathTextBetween,
+    MathTextData,
+    MathTextEscape,
+    MathTextCloseInline,
+    MathTextCloseDisplay,
+
     SpaceOrTabStart,
     SpaceOrTabInside,
     SpaceOrTabAfter,
@@ -930,6 +938,14 @@ pub fn call(tokenizer: &mut Tokenizer, name: Name) -> State {
         Name::RawTextBetween => construct::raw_text::between,
         Name::RawTextData => construct::raw_text::data,
         Name::RawTextSequenceClose => construct::raw_text::sequence_close,
+
+        Name::MathTextStart => construct::math_text::start,
+        Name::MathTextOpened => construct::math_text::opened,
+        Name::MathTextBetween => construct::math_text::between,
+        Name::MathTextData => construct::math_text::data,
+        Name::MathTextEscape => construct::math_text::escape,
+        Name::MathTextCloseInline => construct::math_text::close_inline,
+        Name::MathTextCloseDisplay => construct::math_text::close_display,
 
         Name::SpaceOrTabStart => construct::partial_space_or_tab::start,
         Name::SpaceOrTabInside => construct::partial_space_or_tab::inside,

@@ -128,6 +128,11 @@ use crate::tokenizer::Tokenizer;
 ///      ^
 /// ```
 pub fn start(tokenizer: &mut Tokenizer) -> State {
+    // Math (text) follows pandoc's rules: `construct::math_text`.
+    if tokenizer.parse_state.options.constructs.math_text && tokenizer.current == Some(b'$') {
+        return State::Retry(StateName::MathTextStart);
+    }
+
     // Code (text):
     if ((tokenizer.parse_state.options.constructs.code_text && tokenizer.current == Some(b'`'))
         // Math (text):
