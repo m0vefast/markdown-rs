@@ -60,20 +60,20 @@ fn math_text() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("$ $$ $", &math)?,
-        "<p><code class=\"language-math math-inline\">$$</code></p>",
-        "should support math (text) w/ fences inside, and padding"
+        "<p>$ $$ $</p>",
+        "should not support math (text) w/ fences inside, and padding (pandoc: no space after the opener)"
     );
 
     assert_eq!(
         to_html_with_options("$  $$  $", &math)?,
-        "<p><code class=\"language-math math-inline\"> $$ </code></p>",
-        "should support math (text) w/ extra padding"
+        "<p>$  $$  $</p>",
+        "should not support math (text) w/ extra padding (pandoc)"
     );
 
     assert_eq!(
         to_html_with_options("$ a$", &math)?,
-        "<p><code class=\"language-math math-inline\"> a</code></p>",
-        "should support math (text) w/ unbalanced padding"
+        "<p>$ a$</p>",
+        "should not support math (text) w/ unbalanced padding (pandoc)"
     );
 
     assert_eq!(
@@ -84,20 +84,20 @@ fn math_text() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("$ $\n$  $", &math)?,
-        "<p><code class=\"language-math math-inline\"> </code>\n<code class=\"language-math math-inline\">  </code></p>",
-        "should support math (text) w/o data"
+        "<p>$ $\n$  $</p>",
+        "should not support math (text) w/o data (pandoc)"
     );
 
     assert_eq!(
         to_html_with_options("$\nfoo\nbar  \nbaz\n$", &math)?,
-        "<p><code class=\"language-math math-inline\">foo bar   baz</code></p>",
-        "should support math (text) w/o line endings (1)"
+        "<p>$\nfoo\nbar<br />\nbaz\n$</p>",
+        "should not support math (text) opened by a line ending (1) (pandoc)"
     );
 
     assert_eq!(
         to_html_with_options("$\nfoo \n$", &math)?,
-        "<p><code class=\"language-math math-inline\">foo </code></p>",
-        "should support math (text) w/o line endings (2)"
+        "<p>$\nfoo\n$</p>",
+        "should not support math (text) opened by a line ending (2) (pandoc)"
     );
 
     assert_eq!(
@@ -108,8 +108,8 @@ fn math_text() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("$foo\\$bar$", &math)?,
-        "<p><code class=\"language-math math-inline\">foo\\</code>bar$</p>",
-        "should not support character escapes"
+        "<p><code class=\"language-math math-inline\">foo\\$bar</code></p>",
+        "should not close on an escaped dollar (pandoc)"
     );
 
     assert_eq!(
@@ -120,8 +120,8 @@ fn math_text() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("$ foo $$ bar $", &math)?,
-        "<p><code class=\"language-math math-inline\">foo $$ bar</code></p>",
-        "should support less dollars"
+        "<p>$ foo $$ bar $</p>",
+        "should not support less dollars w/ padding (pandoc)"
     );
 
     assert_eq!(
@@ -179,8 +179,8 @@ fn math_text() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("$$$foo$$", &math)?,
-        "<p>$$$foo$$</p>",
-        "should not support more dollars before a fence"
+        "<p><code class=\"language-math math-inline\">$foo</code></p>",
+        "should read a single dollar inside display math as content (commonmark-hs `pDollarsMath`)"
     );
 
     assert_eq!(
@@ -191,8 +191,8 @@ fn math_text() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("$foo$$bar$$", &math)?,
-        "<p>$foo<code class=\"language-math math-inline\">bar</code></p>",
-        "should not support no closing fence (2)"
+        "<p><code class=\"language-math math-inline\">foo</code><code class=\"language-math math-inline\">bar</code>$</p>",
+        "should close a dollar at the next one (pandoc)"
     );
 
     assert_eq!(

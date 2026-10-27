@@ -54,7 +54,12 @@ pub fn parse<'a>(
         index: 0,
         vs: 0,
     };
-    let mut tokenizer = Tokenizer::new(start, &parse_state);
+    let mut tokenizer = Tokenizer::new(start.clone(), &parse_state);
+    // The document starts its first line: with that line’s jump in place, the
+    // jump a line ending adds is its own line’s. One a slot early is read after
+    // an attempt reverts across line endings (an unclosed frontmatter fence),
+    // and moved the document past what the attempt had read.
+    tokenizer.define_skip(start);
 
     let state = tokenizer.push(
         (0, 0),

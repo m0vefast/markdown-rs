@@ -134,6 +134,36 @@ fn frontmatter() -> Result<(), message::Message> {
     );
 
     assert_eq!(
+        to_html_with_options("---\n\n- a\n", &frontmatter)?,
+        "<hr />\n<ul>\n<li>a</li>\n</ul>\n",
+        "should read a list after a missing closing fence as without frontmatter"
+    );
+
+    assert_eq!(
+        to_html_with_options("---\n\n- a", &frontmatter)?,
+        "<hr />\n<ul>\n<li>a</li>\n</ul>",
+        "should read a list at the end after a missing closing fence"
+    );
+
+    assert_eq!(
+        to_html_with_options("---\n\n1. a\n2. b\n", &frontmatter)?,
+        "<hr />\n<ol>\n<li>a</li>\n<li>b</li>\n</ol>\n",
+        "should read an ordered list after a missing closing fence"
+    );
+
+    assert_eq!(
+        to_html_with_options("---\ntitle: x\n\n> q\n", &frontmatter)?,
+        "<hr />\n<p>title: x</p>\n<blockquote>\n<p>q</p>\n</blockquote>\n",
+        "should read a block quote after a missing closing fence"
+    );
+
+    assert_eq!(
+        to_mdast("---\n\n- a\n", &frontmatter.parse)?,
+        to_mdast("***\n\n- a\n", &ParseOptions::default())?,
+        "should position what follows a missing closing fence as without frontmatter"
+    );
+
+    assert_eq!(
         to_html_with_options("---\na\n\nb\n \t\nc\n---", &frontmatter)?,
         "",
         "should support blank lines in frontmatter"

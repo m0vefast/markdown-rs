@@ -40,8 +40,8 @@ fn math_flow() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("$\nfoo\n$", &math)?,
-        "<p><code class=\"language-math math-inline\">foo</code></p>",
-        "should not support math (flow) w/ less than two markers"
+        "<p>$\nfoo\n$</p>",
+        "should not support math (flow) w/ less than two markers (nor text: pandoc wants no space inside `$`)"
     );
 
     assert_eq!(
