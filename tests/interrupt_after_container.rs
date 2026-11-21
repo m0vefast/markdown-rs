@@ -44,3 +44,22 @@ fn a_closed_container_does_not_change_the_paragraph_after_it() {
     }
     assert_eq!(bad, Vec::<String>::new());
 }
+
+/// HTML that only its tag makes a block (CommonMark kind 7) cannot interrupt a
+/// paragraph, on a lazy line too (commonmark.js `blockStarts` HTML: kind 7 needs a
+/// tip that is not a paragraph): the line continues the paragraph inside its
+/// container, as if written inside it.
+#[test]
+fn a_lazy_complete_html_line_continues_the_paragraph() {
+    let mut bad = Vec::new();
+    for (open, inside) in [("- b\n", "  "), ("1. b\n", "   "), ("> b\n", "> "), ("- a\n- b\n", "  "), ("> - b\n", ">   ")] {
+        for x in ["<my-tag>", "</my-tag>", "<a href=\"x\">", "<a>"] {
+            let got = html(&format!("{open}{x}\nstill\n"));
+            let want = html(&format!("{open}{inside}{x}\n{inside}still\n"));
+            if got != want {
+                bad.push(format!("{:?}\n  got  {got:?}\n  want {want:?}", format!("{open}{x}\nstill\n")));
+            }
+        }
+    }
+    assert_eq!(bad, Vec::<String>::new());
+}

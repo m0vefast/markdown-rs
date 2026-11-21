@@ -1133,8 +1133,8 @@ fn html_flow_7_complete() -> Result<(), message::Message> {
 
     assert_eq!(
         to_html_with_options("> a\n<a>", &danger)?,
-        "<blockquote>\n<p>a</p>\n</blockquote>\n<a>",
-        "should not support lazyness (2)"
+        "<blockquote>\n<p>a\n<a></p>\n</blockquote>",
+        "should not interrupt a lazy paragraph (commonmark.js: kind 7 needs a tip that is not a paragraph)"
     );
 
     Ok(())

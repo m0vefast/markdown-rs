@@ -354,8 +354,9 @@ pub fn tag_name(tokenizer: &mut Tokenizer) -> State {
             } else {
                 tokenizer.tokenize_state.marker = COMPLETE;
 
-                // Do not support complete HTML when interrupting.
-                if tokenizer.interrupt && !tokenizer.lazy {
+                // Do not support complete HTML when interrupting, on a lazy
+                // line too: it continues the paragraph (commonmark.js).
+                if tokenizer.interrupt {
                     tokenizer.tokenize_state.marker = 0;
                     State::Nok
                 } else if closing_tag {
