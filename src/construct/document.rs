@@ -483,6 +483,10 @@ fn exit_containers(tokenizer: &mut Tokenizer, phase: &Phase) -> Result<(), messa
             .unwrap_or(State::Next(StateName::FlowStart));
 
         child.flush(state, false)?;
+        // The flow ended: there is nothing left to interrupt. `Phase::After`
+        // leaves the flow running (a paragraph after the closed containers
+        // still continues), so it keeps the flow's `interrupt`.
+        child.interrupt = false;
     }
 
     if !stack_close.is_empty() {
@@ -526,8 +530,6 @@ fn exit_containers(tokenizer: &mut Tokenizer, phase: &Phase) -> Result<(), messa
         );
         tokenizer.tokenize_state.document_exits[index] = Some(exits);
     }
-
-    child.interrupt = false;
 
     Ok(())
 }
